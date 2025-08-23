@@ -1,0 +1,11 @@
+<Project>
+  <UsingTask TaskName="UnrealSharpWeaverTask" AssemblyFile="$(MSBuildThisFileDirectory)\..\..\Binaries\Managed\netstandard2.0\UnrealSharpWeaver.dll" />
+
+  <Target Name="WeaveAssemblies" AfterTargets="CoreCompile" DependsOnTargets="CoreCompile" Condition="'$(ExcludeFromWeaver)' != 'true'"
+          Inputs="@(IntermediateAssembly)"
+          Outputs="@(IntermediateAssembly->'%(RootDir)%(Directory)%(Filename).metadata.json')">
+    <UnrealSharpWeaverTask References="@(ReferencePath);@(IntermediateAssembly)" Assemblies="@(IntermediateAssembly)" OutputPath="$(IntermediateOutputPath)">
+      <Output TaskParameter="OutputFiles" ItemName="WeaverOutputFiles" />
+    </UnrealSharpWeaverTask>
+  </Target>
+</Project>

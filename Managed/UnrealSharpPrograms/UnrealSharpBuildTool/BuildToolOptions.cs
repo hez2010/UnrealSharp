@@ -11,10 +11,8 @@ public enum BuildAction : int
     GenerateProject,
     UpdateProjectDependencies,
     Rebuild,
-    Weave,
     PackageProject,
     GenerateSolution,
-    BuildWeave,
 }
 
 public enum BuildConfig : int

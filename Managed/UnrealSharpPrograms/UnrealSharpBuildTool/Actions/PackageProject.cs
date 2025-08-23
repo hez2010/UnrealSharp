@@ -23,7 +23,7 @@ public class PackageProject : BuildToolAction
             "--self-contained",
             "--runtime",
             "win-x64",
-			"-p:DisableWithEditor=true",
+            "-p:DisableWithEditor=true",
             $"-p:PublishDir=\"{binariesPath}\"",
             $"-p:OutputPath=\"{bindingsOutputPath}\"",
         ];
@@ -33,9 +33,6 @@ public class PackageProject : BuildToolAction
         
         BuildUserSolution buildUserSolution = new BuildUserSolution(null, BuildConfig.Publish);
         buildUserSolution.RunAction();
-        
-        WeaveProject weaveProject = new WeaveProject(binariesPath);
-        weaveProject.RunAction();
         
         return true;
     }

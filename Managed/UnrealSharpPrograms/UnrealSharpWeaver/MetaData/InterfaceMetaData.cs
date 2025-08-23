@@ -5,7 +5,7 @@ namespace UnrealSharpWeaver.MetaData;
 
 public class InterfaceMetaData : TypeReferenceMetadata
 { 
-    public TypeReferenceMetadata ParentInterface { get; set; }
+    public TypeReferenceMetadata? ParentInterface { get; set; }
     public List<FunctionMetaData> Functions { get; set; }
     
     // Non-serialized for JSON

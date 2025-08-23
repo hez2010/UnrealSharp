@@ -37,11 +37,6 @@ public class BaseMetaData
 
     public void TryAddMetaData(string key, string value = "")
     {
-        if (MetaData.TryAdd(key, value))
-        {
-            return;
-        }
-
         MetaData[key] = value;
     }
 

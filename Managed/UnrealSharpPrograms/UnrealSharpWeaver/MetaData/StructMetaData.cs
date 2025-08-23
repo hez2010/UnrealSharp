@@ -20,7 +20,6 @@ public partial class StructMetaData : TypeReferenceMetadata
         IsBlittableStruct = true;
         
 
-        var backingFieldRegex = BackingFieldRegex();
         foreach (var field in structDefinition.Fields)
         {
             if (field.IsStatic)
@@ -37,7 +36,7 @@ public partial class StructMetaData : TypeReferenceMetadata
             PropertyMetaData property = new PropertyMetaData(field);
             
             // If we match against a backing property field use the property name instead.
-            var backingFieldMatch = backingFieldRegex.Match(field.Name);
+            var backingFieldMatch = BackingFieldRegex.Match(field.Name);
             if (backingFieldMatch.Success)
             {
                 string propertyName = backingFieldMatch.Groups[1].Value;
@@ -87,6 +86,5 @@ public partial class StructMetaData : TypeReferenceMetadata
         TryAddMetaData("BlueprintType", true);
     }
 
-    [GeneratedRegex("<([a-zA-Z$_][a-zA-Z0-9$_]*)>k__BackingField")]
-    private static partial Regex BackingFieldRegex();
+    private static Regex BackingFieldRegex { get; } = new Regex("<([a-zA-Z$_][a-zA-Z0-9$_]*)>k__BackingField", RegexOptions.Compiled);
 }

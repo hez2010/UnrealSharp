@@ -1,56 +1,34 @@
-using System.Text.Json;
+﻿using Microsoft.Build.Framework;
 using Mono.Cecil;
 using Mono.Cecil.Pdb;
+using System.Text.Json;
 using UnrealSharpWeaver.MetaData;
 using UnrealSharpWeaver.TypeProcessors;
 using UnrealSharpWeaver.Utilities;
 
 namespace UnrealSharpWeaver;
 
-public static class Program
+public sealed class UnrealSharpWeaverTask : Microsoft.Build.Utilities.Task
 {
-    public static WeaverOptions WeaverOptions { get; private set; } = null!;
+    [Required]
+    public required ITaskItem[] References { get; set; }
+    [Required]
+    public required ITaskItem[] Assemblies { get; set; }
+    [Required]
+    public required string OutputPath { get; set; }
+    [Output]
+    public ITaskItem[]? OutputFiles { get; set; }
 
-    public static void Weave(WeaverOptions weaverOptions)
-    {
-        try
-        {
-            WeaverOptions = weaverOptions;
-            LoadBindingsAssembly();
-            ProcessUserAssemblies();
-        }
-        finally
-        {
-            WeaverImporter.Shutdown();
-        }
-    }
-
-    public static int Main(string[] args)
-    {
-        try
-        {
-            WeaverOptions = WeaverOptions.ParseArguments(args);
-            LoadBindingsAssembly();
-            ProcessUserAssemblies();
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static void LoadBindingsAssembly()
+    private void LoadBindingsAssembly()
     {
         DefaultAssemblyResolver resolver = new DefaultAssemblyResolver();
 
-        List<string> searchPaths = new();
-        foreach (string assemblyPath in WeaverOptions.AssemblyPaths)
+        HashSet<string> searchPaths = new();
+        foreach (string assemblyPath in References.Select(p => p.ItemSpec))
         {
             string? directory = Path.GetDirectoryName(StripQuotes(assemblyPath));
 
-            if (string.IsNullOrEmpty(directory) || searchPaths.Contains(directory))
+            if (string.IsNullOrEmpty(directory) || !searchPaths.Add(directory))
             {
                 continue;
             }
@@ -61,15 +39,14 @@ public static class Program
             }
 
             resolver.AddSearchDirectory(directory);
-            searchPaths.Add(directory);
         }
         
         WeaverImporter.Instance.AssemblyResolver = resolver;
     }
 
-    private static void ProcessUserAssemblies()
+    private void ProcessUserAssemblies()
     {
-        DirectoryInfo outputDirInfo = new DirectoryInfo(StripQuotes(WeaverOptions.OutputDirectory));
+        DirectoryInfo outputDirInfo = new DirectoryInfo(Path.Combine(StripQuotes(OutputPath), "weaver"));
 
         if (!outputDirInfo.Exists)
         {
@@ -80,9 +57,15 @@ public static class Program
         List<AssemblyDefinition> assembliesToProcess = LoadInputAssemblies(resolver);
         ICollection<AssemblyDefinition> orderedUserAssemblies = OrderInputAssembliesByReferences(assembliesToProcess);
         WeaverImporter.Instance.AllProjectAssemblies = assembliesToProcess;
-
         WriteUnrealSharpMetadataFile(orderedUserAssemblies, outputDirInfo);
-        ProcessOrderedAssemblies(orderedUserAssemblies, outputDirInfo);
+        ICollection<string> outputFiles = ProcessOrderedAssemblies(orderedUserAssemblies, outputDirInfo);
+
+        foreach (string file in outputFiles)
+        {
+            File.Copy(file, Path.Combine(OutputPath, Path.GetFileName(file)), true);
+        }
+
+        OutputFiles = outputFiles.Select(x => new Microsoft.Build.Utilities.TaskItem(x, true)).ToArray();
     }
 
     private static void WriteUnrealSharpMetadataFile(ICollection<AssemblyDefinition> orderedAssemblies, DirectoryInfo outputDirectory)
@@ -102,13 +85,13 @@ public static class Program
         File.WriteAllText(fileName, metaDataContent);
     }
 
-    private static void ProcessOrderedAssemblies(ICollection<AssemblyDefinition> assemblies, DirectoryInfo outputDirectory)
+    private ICollection<string> ProcessOrderedAssemblies(ICollection<AssemblyDefinition> assemblies, DirectoryInfo outputDirectory)
     {
         Exception? exception = null;
-
+        List<string> outputFiles = new List<string>(assemblies.Count);
         foreach (AssemblyDefinition assembly in assemblies)
         {
-            if (assembly.Name.Name.EndsWith("Glue"))
+            if (assembly.Name.Name.EndsWith(".Glue"))
             {
                 continue;
             }
@@ -117,6 +100,8 @@ public static class Program
             {
                 string outputPath = Path.Combine(outputDirectory.FullName, Path.GetFileName(assembly.MainModule.FileName));
                 StartWeavingAssembly(assembly, outputPath);
+                outputFiles.Add(outputPath);
+                outputFiles.Add(Path.ChangeExtension(outputPath, "metadata.json"));
             }
             catch (Exception ex)
             {
@@ -134,6 +119,8 @@ public static class Program
         {
             throw new AggregateException("Assembly processing failed", exception);
         }
+
+        return outputFiles;
     }
 
     private static ICollection<AssemblyDefinition> OrderInputAssembliesByReferences(ICollection<AssemblyDefinition> assemblies)
@@ -242,7 +229,7 @@ public static class Program
         return WeaverImporter.Instance.AssemblyResolver;
     }
 
-    private static List<AssemblyDefinition> LoadInputAssemblies(IAssemblyResolver resolver)
+    private List<AssemblyDefinition> LoadInputAssemblies(IAssemblyResolver resolver)
     {
         ReaderParameters readerParams = new ReaderParameters
         {
@@ -253,7 +240,7 @@ public static class Program
 
         List<AssemblyDefinition> result = new List<AssemblyDefinition>();
 
-        foreach (var assemblyPath in WeaverOptions.AssemblyPaths.Select(StripQuotes))
+        foreach (var assemblyPath in Assemblies.Select(p => StripQuotes(p.ItemSpec)))
         {
             if (!File.Exists(assemblyPath))
             {
@@ -269,7 +256,7 @@ public static class Program
 
     private static string StripQuotes(string value)
     {
-        if (value.StartsWith('\"') && value.EndsWith('\"'))
+        if (value.StartsWith("\"") && value.EndsWith("\""))
         {
             return value.Substring(1, value.Length - 2);
         }
@@ -279,55 +266,11 @@ public static class Program
 
     static void StartWeavingAssembly(AssemblyDefinition assembly, string assemblyOutputPath)
     {
-        void CleanOldFilesAndMoveExistingFiles()
-        {
-            var pdbOutputFile = new FileInfo(Path.ChangeExtension(assemblyOutputPath, ".pdb"));
-
-            if (!pdbOutputFile.Exists)
-            {
-                return;
-            }
-
-            var tmpDirectory = Path.Join(Path.GetTempPath(), assembly.Name.Name);
-            if (Path.GetPathRoot(tmpDirectory) != Path.GetPathRoot(pdbOutputFile.FullName)) //if the temp directory is on a different drive, move will not work as desired if file is locked since it does a copy for drive boundaries
-            {
-                tmpDirectory = Path.Join(Path.GetDirectoryName(assemblyOutputPath), "..", "_Temporary", assembly.Name.Name);
-            }
-
-            try
-            {
-                if (Directory.Exists(tmpDirectory))
-                {
-                    foreach (var file in Directory.GetFiles(tmpDirectory))
-                    {
-                        File.Delete(file);
-                    }
-                }
-                else
-                {
-                    Directory.CreateDirectory(tmpDirectory);
-                }
-            }
-            catch
-            {
-                //no action needed
-            }
-
-            //move the file to an temp folder to prevent write locks in case a debugger is attached to UE which locks the pdb for writes (common strategy).
-            var tmpDestFileName = Path.Join(tmpDirectory, Path.GetFileName(Path.ChangeExtension(Path.GetTempFileName(), ".pdb")));
-            File.Move(pdbOutputFile.FullName, tmpDestFileName);
-        }
-
-        Task cleanupTask = Task.Run(CleanOldFilesAndMoveExistingFiles);
         WeaverImporter.Instance.ImportCommonTypes(assembly);
 
         ApiMetaData assemblyMetaData = new ApiMetaData(assembly.Name.Name);
         StartProcessingAssembly(assembly, assemblyMetaData);
 
-        string sourcePath = Path.GetDirectoryName(assembly.MainModule.FileName)!;
-        CopyAssemblyDependencies(assemblyOutputPath, sourcePath);
-
-        Task.WaitAll(cleanupTask);
         assembly.Write(assemblyOutputPath, new WriterParameters
         {
             SymbolWriterProvider = new PdbWriterProvider(),
@@ -416,53 +359,18 @@ public static class Program
         }
     }
 
-    private static void RecursiveFileCopy(DirectoryInfo sourceDirectory, DirectoryInfo destinationDirectory)
+    public override bool Execute()
     {
-        // Early out of our search if the last updated timestamps match
-        if (sourceDirectory.LastWriteTimeUtc == destinationDirectory.LastWriteTimeUtc) return;
-
-        if (!destinationDirectory.Exists)
-        {
-            destinationDirectory.Create();
-        }
-
-        foreach (FileInfo sourceFile in sourceDirectory.GetFiles())
-        {
-            string destinationFilePath = Path.Combine(destinationDirectory.FullName, sourceFile.Name);
-            FileInfo destinationFile = new FileInfo(destinationFilePath);
-
-            if (!destinationFile.Exists || sourceFile.LastWriteTimeUtc > destinationFile.LastWriteTimeUtc)
-            {
-                sourceFile.CopyTo(destinationFilePath, true);
-            }
-        }
-
-        // Update our write time to match source for faster copying
-        destinationDirectory.LastWriteTimeUtc = sourceDirectory.LastWriteTimeUtc;
-
-        foreach (DirectoryInfo subSourceDirectory in sourceDirectory.GetDirectories())
-        {
-            string subDestinationDirectoryPath = Path.Combine(destinationDirectory.FullName, subSourceDirectory.Name);
-            DirectoryInfo subDestinationDirectory = new DirectoryInfo(subDestinationDirectoryPath);
-
-            RecursiveFileCopy(subSourceDirectory, subDestinationDirectory);
-        }
-    }
-
-    private static void CopyAssemblyDependencies(string destinationPath, string sourcePath)
-    {
-        var directoryName = Path.GetDirectoryName(destinationPath) ?? throw new InvalidOperationException("Assembly path does not have a valid directory.");
-
         try
         {
-            var destinationDirectory = new DirectoryInfo(directoryName);
-            var sourceDirectory = new DirectoryInfo(sourcePath);
-
-            RecursiveFileCopy(sourceDirectory, destinationDirectory);
+            LoadBindingsAssembly();
+            ProcessUserAssemblies();
+            return true;
         }
         catch (Exception ex)
         {
-            ErrorEmitter.Error("WeaverError", sourcePath, 0, "Failed to copy dependencies: " + ex.Message);
+            Log.LogError(ex.ToString());
+            return false;
         }
     }
 }

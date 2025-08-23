@@ -1,4 +1,4 @@
-using Mono.Cecil;
+﻿using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Cecil.Rocks;
 using Mono.Collections.Generic;
@@ -59,8 +59,8 @@ public static class TypeDefinitionUtilities
                 return (string) genTypeAttribute.ConstructorArguments[0].Value;
             }
 
-            if (memberDefinition.IsUClass() && memberDefinition.Name.StartsWith('U') ||
-                memberDefinition.IsUStruct() && memberDefinition.Name.StartsWith('F'))
+            if (memberDefinition.IsUClass() && memberDefinition.Name.StartsWith("U") ||
+                memberDefinition.IsUStruct() && memberDefinition.Name.StartsWith("F"))
             {
                 return memberDefinition.Name[1..];
             }
