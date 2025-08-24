@@ -55,37 +55,18 @@ public sealed class UnrealSharpWeaverTask : Microsoft.Build.Utilities.Task
 
         DefaultAssemblyResolver resolver = GetAssemblyResolver();
         List<AssemblyDefinition> assembliesToProcess = LoadInputAssemblies(resolver);
-        ICollection<AssemblyDefinition> orderedUserAssemblies = OrderInputAssembliesByReferences(assembliesToProcess);
         WeaverImporter.Instance.AllProjectAssemblies = assembliesToProcess;
-        WriteUnrealSharpMetadataFile(orderedUserAssemblies, outputDirInfo);
-        ICollection<string> outputFiles = ProcessOrderedAssemblies(orderedUserAssemblies, outputDirInfo);
+        ICollection<string> outputFiles = ProcessAssemblies(assembliesToProcess, outputDirInfo);
 
         foreach (string file in outputFiles)
         {
             File.Copy(file, Path.Combine(OutputPath, Path.GetFileName(file)), true);
         }
 
-        OutputFiles = outputFiles.Select(x => new Microsoft.Build.Utilities.TaskItem(x, true)).ToArray();
+        OutputFiles = outputFiles.Select(x => new Microsoft.Build.Utilities.TaskItem(x)).ToArray();
     }
 
-    private static void WriteUnrealSharpMetadataFile(ICollection<AssemblyDefinition> orderedAssemblies, DirectoryInfo outputDirectory)
-    {
-        UnrealSharpMetadata unrealSharpMetadata = new UnrealSharpMetadata
-        {
-            AssemblyLoadingOrder = orderedAssemblies
-                .Select(x => Path.GetFileNameWithoutExtension(x.MainModule.FileName)).ToList(),
-        };
-
-        string metaDataContent = JsonSerializer.Serialize(unrealSharpMetadata, new JsonSerializerOptions
-        {
-            WriteIndented = false,
-        });
-
-        string fileName = Path.Combine(outputDirectory.FullName, "UnrealSharp.assemblyloadorder.json");
-        File.WriteAllText(fileName, metaDataContent);
-    }
-
-    private ICollection<string> ProcessOrderedAssemblies(ICollection<AssemblyDefinition> assemblies, DirectoryInfo outputDirectory)
+    private ICollection<string> ProcessAssemblies(ICollection<AssemblyDefinition> assemblies, DirectoryInfo outputDirectory)
     {
         Exception? exception = null;
         List<string> outputFiles = new List<string>(assemblies.Count);
@@ -121,107 +102,6 @@ public sealed class UnrealSharpWeaverTask : Microsoft.Build.Utilities.Task
         }
 
         return outputFiles;
-    }
-
-    private static ICollection<AssemblyDefinition> OrderInputAssembliesByReferences(ICollection<AssemblyDefinition> assemblies)
-    {
-        HashSet<string> assemblyNames = new HashSet<string>();
-        
-        foreach (AssemblyDefinition assembly in assemblies)
-        {
-            assemblyNames.Add(assembly.FullName);
-        }
-
-        List<AssemblyDefinition> result = new List<AssemblyDefinition>(assemblies.Count);
-        HashSet<AssemblyDefinition> remaining = new HashSet<AssemblyDefinition>(assemblies);
-
-        // Add assemblies with no references first between the user assemblies.
-        foreach (AssemblyDefinition assembly in assemblies)
-        {
-            bool hasReferenceToUserAssembly = false;
-            foreach (AssemblyNameReference? reference in assembly.MainModule.AssemblyReferences)
-            {
-                if (!assemblyNames.Contains(reference.FullName))
-                {
-                    continue;
-                }
-                
-                hasReferenceToUserAssembly = true;
-                break;
-            }
-
-            if (hasReferenceToUserAssembly)
-            {
-                continue;
-            }
-            
-            result.Add(assembly);
-            remaining.Remove(assembly);
-        }
-        
-        do
-        {
-            bool added = false;
-
-            foreach (AssemblyDefinition assembly in assemblies)
-            {
-                if (!remaining.Contains(assembly))
-                {
-                    continue;
-                }
-                
-                bool allResolved = true;
-                foreach (AssemblyNameReference? reference in assembly.MainModule.AssemblyReferences)
-                {
-                    if (assemblyNames.Contains(reference.FullName))
-                    {
-                        bool found = false;
-                        foreach (AssemblyDefinition addedAssembly in result)
-                        {
-                            if (addedAssembly.FullName != reference.FullName)
-                            {
-                                continue;
-                            }
-                            
-                            found = true;
-                            break;
-                        }
-
-                        if (found)
-                        {
-                            continue;
-                        }
-                        
-                        allResolved = false;
-                        break;
-                    }
-                }
-
-                if (!allResolved)
-                {
-                    continue;
-                }
-                
-                result.Add(assembly);
-                remaining.Remove(assembly);
-                added = true;
-            }
-            
-            if (added || remaining.Count <= 0)
-            {
-                continue;
-            }
-            
-            foreach (AssemblyDefinition asm in remaining)
-            {
-                result.Add(asm);
-            }
-            
-            break;
-
-        } while (remaining.Count > 0);
-
-        return result;
     }
 
     private static DefaultAssemblyResolver GetAssemblyResolver()
@@ -264,7 +144,7 @@ public sealed class UnrealSharpWeaverTask : Microsoft.Build.Utilities.Task
         return value;
     }
 
-    static void StartWeavingAssembly(AssemblyDefinition assembly, string assemblyOutputPath)
+    private void StartWeavingAssembly(AssemblyDefinition assembly, string assemblyOutputPath)
     {
         WeaverImporter.Instance.ImportCommonTypes(assembly);
 
@@ -275,7 +155,7 @@ public sealed class UnrealSharpWeaverTask : Microsoft.Build.Utilities.Task
         {
             SymbolWriterProvider = new PdbWriterProvider(),
         });
-
+        assemblyMetaData.References.AddRange(References.Select(r => r.ItemSpec));
         WriteAssemblyMetaDataFile(assemblyMetaData, assemblyOutputPath);
     }
 

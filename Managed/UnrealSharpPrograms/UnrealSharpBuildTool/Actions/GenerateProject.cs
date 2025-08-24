@@ -175,6 +175,7 @@ public class GenerateProject : BuildToolAction
                 AddDependency(csprojDocument, newItemGroup, dependency);
             }
 
+            csprojDocument.CreateElement("Import").SetAttribute("Project", @"..\..\Plugins\UnrealSharp\Managed\Build\UnrealSharp.Build.targets");
             csprojDocument.Save(_projectPath);
         }
         catch (Exception ex)

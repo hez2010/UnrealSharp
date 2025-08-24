@@ -1,6 +1,6 @@
-﻿using System.Xml.Linq;
-using CommandLine;
+﻿using CommandLine;
 using Newtonsoft.Json;
+using System.Xml.Linq;
 using UnrealSharpBuildTool.Actions;
 
 namespace UnrealSharpBuildTool;

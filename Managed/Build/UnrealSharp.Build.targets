@@ -1,4 +1,4 @@
-<Project>
+﻿<Project>
   <UsingTask TaskName="UnrealSharpWeaverTask" AssemblyFile="$(MSBuildThisFileDirectory)\..\..\Binaries\Managed\netstandard2.0\UnrealSharpWeaver.dll" />
 
   <Target Name="WeaveAssemblies" AfterTargets="CoreCompile" DependsOnTargets="CoreCompile" Condition="'$(ExcludeFromWeaver)' != 'true'"

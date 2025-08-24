@@ -113,8 +113,6 @@ public static class ManagedUnrealSharpEditorCallbacks
                     throw new Exception(logger.ErrorLog.ToString());
                 }
             }
-
-            Weave(outputPath, buildConfigurationString);
         }
         catch (Exception exception)
         {
@@ -125,28 +123,6 @@ public static class ManagedUnrealSharpEditorCallbacks
         return NativeBool.True;
     }
 
-    static unsafe void Weave(char* outputPath, string buildConfiguration)
-    {
-        List<string> assemblyPaths = new();
-        foreach (Project? projectFile in ProjectCollection.LoadedProjects
-                     .Where(p => p.GetPropertyValue("ExcludeFromWeaver") != "true"))
-        {
-            string projectName = Path.GetFileNameWithoutExtension(projectFile.FullPath);
-            string assemblyPath = Path.Combine(projectFile.DirectoryPath, "bin",
-                buildConfiguration, DotNetUtilities.DOTNET_MAJOR_VERSION_DISPLAY, projectName + ".dll");
-
-            assemblyPaths.Add(assemblyPath);
-        }
-
-        WeaverOptions weaverOptions = new WeaverOptions
-        {
-            AssemblyPaths = assemblyPaths,
-            OutputDirectory = new string(outputPath),
-        };
-
-        Program.Weave(weaverOptions);
-    }
-    
     [UnmanagedCallersOnly]
     public static void ForceManagedGC()
     {

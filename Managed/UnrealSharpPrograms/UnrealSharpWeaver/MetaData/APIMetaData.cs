@@ -10,6 +10,7 @@ public class ApiMetaData
         EnumMetaData = new List<EnumMetaData>();
         InterfacesMetaData = new List<InterfaceMetaData>();
         DelegateMetaData = new List<DelegateMetaData>();
+        References = new List<string>();
     }
 
     public List<ClassMetaData> ClassMetaData { get; set; }  
@@ -17,6 +18,7 @@ public class ApiMetaData
     public List<EnumMetaData> EnumMetaData { get; set; }
     public List<InterfaceMetaData> InterfacesMetaData { get; set; }
     public List<DelegateMetaData> DelegateMetaData { get; set; }
+    public List<string> References { get; set; }
     
     public string AssemblyName { get; set; }
 }
