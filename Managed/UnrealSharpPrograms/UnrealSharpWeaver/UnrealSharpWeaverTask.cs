@@ -63,7 +63,10 @@ public sealed class UnrealSharpWeaverTask : Microsoft.Build.Utilities.Task
             File.Copy(file, Path.Combine(OutputPath, Path.GetFileName(file)), true);
         }
 
-        OutputFiles = outputFiles.Select(x => new Microsoft.Build.Utilities.TaskItem(x)).ToArray();
+        outputDirInfo.Delete(true);
+
+        OutputFiles = outputFiles.Select(x =>
+            new Microsoft.Build.Utilities.TaskItem(Path.Combine(OutputPath, Path.GetFileName(x)))).ToArray();
     }
 
     private ICollection<string> ProcessAssemblies(ICollection<AssemblyDefinition> assemblies, DirectoryInfo outputDirectory)
@@ -149,13 +152,13 @@ public sealed class UnrealSharpWeaverTask : Microsoft.Build.Utilities.Task
         WeaverImporter.Instance.ImportCommonTypes(assembly);
 
         ApiMetaData assemblyMetaData = new ApiMetaData(assembly.Name.Name);
+        assemblyMetaData.References.AddRange(References.Select(r => r.ItemSpec));
         StartProcessingAssembly(assembly, assemblyMetaData);
 
         assembly.Write(assemblyOutputPath, new WriterParameters
         {
             SymbolWriterProvider = new PdbWriterProvider(),
         });
-        assemblyMetaData.References.AddRange(References.Select(r => r.ItemSpec));
         WriteAssemblyMetaDataFile(assemblyMetaData, assemblyOutputPath);
     }
 
